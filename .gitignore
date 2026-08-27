@@ -7,10 +7,9 @@ __pycache__/
 
 # Runtime artifacts
 logs/
-logs/app.log*
-logs/.offset
-logs/*.archived_*
-tests/
+demo_env/state.json
+demo_env/__pycache__/
+
 # Test / tooling caches
 .pytest_cache/
 .coverage
