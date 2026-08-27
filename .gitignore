@@ -10,6 +10,12 @@ logs/
 demo_env/state.json
 demo_env/__pycache__/
 
+# Dev / test-local files (kept on disk locally, not pushed)
+tests/
+pytest.ini
+seed_test.py
+stop_demo.py
+
 # Test / tooling caches
 .pytest_cache/
 .coverage
