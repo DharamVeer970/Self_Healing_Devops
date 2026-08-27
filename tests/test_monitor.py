@@ -34,10 +34,11 @@ def test_read_new_lines_returns_only_fresh_content(fake_world):
 
 
 def test_offset_resets_after_log_truncation(fake_world):
-    _write(fake_world["log_file"], "a\nb\nc\n")
+    _write(fake_world["log_file"],
+           "one\ntwo\nthree\nfour\nfive\nsix\nseven\n")   # long history
     monitor.read_new_lines()
 
-    # Truncated below the stored offset -> tail restarts from zero.
+    # Truncated far below the stored offset -> tail restarts from zero.
     _write(fake_world["log_file"], "fresh\n")
     assert monitor.read_new_lines() == ["fresh"]
 

@@ -16,18 +16,42 @@ Requires the optional dependency: pip install langgraph
 """
 
 import time
+import warnings
 from typing import TypedDict
 
 from agent import diagnose, monitor, remediate, safety, reporting
 
-try:
-    import warnings
-    with warnings.catch_warnings():
-        # langgraph 0.6.x emits a pending-deprecation warning on import;
-        # it is noise for agent operators.
-        warnings.filterwarnings("ignore",
-                                message=".*default value of .*allowed_objects.*")
+
+def _import_langgraph():
+    """Import langgraph while suppressing a noisy pending-deprecation warning.
+
+    langgraph 0.6.x installs its own warning filters during import that
+    override a plain `warnings.filterwarnings(...)` call. Redirecting the
+    low-level display hook (`_showwarnmsg_impl`) around just the import is
+    the only guaranteed way to keep that single message off the console.
+    """
+    global END, START, StateGraph
+
+    _real = warnings._showwarnmsg_impl if hasattr(
+        warnings, "_showwarnmsg_impl") else None
+
+    def quiet(record):
+        if "allowed_objects" not in str(record.message):
+            if _real is not None:
+                _real(record)
+
+    if _real is not None:
+        warnings._showwarnmsg_impl = quiet
+
+    try:
         from langgraph.graph import END, START, StateGraph
+    finally:
+        if _real is not None:
+            warnings._showwarnmsg_impl = _real
+
+
+try:
+    _import_langgraph()
     HAS_LANGGRAPH = True
 except ImportError:                       # langgraph not installed
     HAS_LANGGRAPH = False
