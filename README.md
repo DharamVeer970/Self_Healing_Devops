@@ -192,6 +192,38 @@ No static-analysis or test gate is configured for now.
 
 ---
 
+## 🛡️ Portfolio Watchdog (real-world healing)
+
+The same agent loop, pointed at a **real deployed service** — the FastAPI
+backend behind [the portfolio](https://dharamveer970.github.io/Portfolio-my/)
+(hosted on Render's free tier):
+
+```
+python -m watchdog.run --once --auto
+```
+
+What it monitors and decides:
+
+| Finding | Action |
+|---|---|
+| `GET /` fails on every retry (503/timeout) | **restart via Render API** → verify deploy is `live` → verify the app answers 200 again |
+| First probe fails but a retry succeeds | free-tier cold start (server was sleeping) — **no action**, logged as normal |
+| `POST /chat` returns 502 | one restart attempt; verification reports honestly if the upstream provider itself is down |
+| `POST /chat` returns 429 | **escalate only** — a restart never fixes rate-limiting |
+| Everything healthy | one-line "all clear" |
+
+Files: `watchdog/monitor.py` (HTTP probes), `watchdog/diagnose.py`
+(decision rules), `watchdog/remediate.py` (Render API restart + deploy
+verification), `watchdog/run.py` (cycle + reporting through
+`agent.reporting` / `agent.notify`).
+
+Run it on a schedule with `.github/workflows/watchdog.yml` (every 20
+minutes, plus a manual "Run workflow" button). Repository secrets needed:
+`RENDER_API_KEY`, `RENDER_SERVICE_ID`, and optionally the Slack/email keys
+for delivery.
+
+---
+
 ## 🔑 LLM setup (optional)
 
 Credentials come **only from the environment** — nothing is hardcoded in
