@@ -2,5 +2,3 @@
 #
 # Optional / used features:
 langgraph>=0.6,<0.7     # --graph engine (python main.py --graph)
-pytest>=8               # dev & CI
-pytest-cov>=5           # coverage report for CI

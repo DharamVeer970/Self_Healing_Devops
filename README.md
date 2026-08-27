@@ -99,14 +99,12 @@ Self_Healing_Devops/
 │   ├── graph.py            # LANGGRAPH engine (--graph): cyclic state machine
 │   ├── reporting.py        # REPORT: shared incident summary for both engines
 │   └── notify.py           # DELIVER: Slack webhook + SMTP email push
-├── tests/                  # hermetic pytest suite (sandboxed, offline-safe)
 ├── demo_env/flaky_app.py   # simulated flaky server (replaces Docker)
 ├── logs/                   # app.log (+ .offset for tail position)
-├── .github/workflows/ci.yml# GitHub Actions: pytest on push/PR
-├── requirements.txt        # langgraph + test deps (runtime core = stdlib)
+├── .github/workflows/ci.yml# GitHub Actions: compile-check on push/PR
+├── requirements.txt        # langgraph + notification deps (runtime = stdlib)
 ├── .env.example            # template: LLM keys + notification channels
-├── .env                    # YOUR API keys live here (never commit/publish)
-└── seed_test.py            # instantly fabricate an incident for testing
+└── .env                    # YOUR API keys live here (never commit/publish)
 ```
 
 ### Key design rule
@@ -141,9 +139,6 @@ python demo_env/flaky_app.py
 `--graph` combines freely with the flags above, e.g.
 `python main.py --graph --auto --once`.
 If `langgraph` is not installed it falls back to the plain loop.
-
-**Shortcuts:** `python seed_test.py 1100` force-seeds an OOM incident;
-`python stop_demo.py` kills leftover background demo processes.
 
 ---
 
@@ -185,55 +180,15 @@ crashing the agent loop.
 
 ---
 
-## ✅ Testing
-
-The test suite lives in `tests/` and is fully hermetic — it runs against a
-temporary sandbox (no real logs touched, `.env` keys stripped, no network),
-so you can run it anytime:
-
-```bash
-python -m pytest                 # whole suite (~0.4s)
-python -m pytest tests/test_safety.py    # one module
-python -m pytest -k "escalat"    # tests matching a keyword
-```
-
-What each module covers:
-
-| Test file | Verifies |
-|---|---|
-| `tests/test_diagnose.py` | every log signature maps to the right fix + confidence |
-| `tests/test_diagnose_llm.py` | provider selection, offline fallback (never calls out) |
-| `tests/test_monitor.py` | byte-exact tailing, partial-line safety, truncation reset |
-| `tests/test_remediate.py` | fixes mutate only simulated state; verify() honesty |
-| `tests/test_agent_loop.py` | full MONITOR → REPORT cycle incl. approve/decline/escalate |
-| `tests/test_graph.py` | LangGraph engine: healing, escalation, retry-loop exit |
-| `tests/test_notify.py` | Slack/email delivery + failure degradation |
-
-For coverage (`pip install pytest-cov`):
-
-```bash
-python -m pytest --cov=agent --cov=main --cov-report=xml --cov-report=term
-```
-
-A quick end-to-end smoke run:
-
-```bash
-python seed_test.py          # fabricate disk-full incident
-python main.py --once --auto # agent must heal + report
-```
-
----
-
 ## 🔍 CI (GitHub Actions)
 
-`.github/workflows/ci.yml` runs on every push and pull request:
+`.github/workflows/ci.yml` runs on every push and pull request, and
+compile-checks all source files so a syntax regression fails the build:
 
 1. install `requirements.txt`
-2. compile-check all sources
-3. `pytest` with coverage (`--cov`) + upload of `coverage.xml` artifact
+2. compile-check all sources (`python -m compileall`)
 
-No static-analysis gate is configured for now — only real tests decide
-green/red.
+No static-analysis or test gate is configured for now.
 
 ---
 
