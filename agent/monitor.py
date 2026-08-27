@@ -16,7 +16,8 @@ OFFSET_FILE = os.path.join(BASE_DIR, "logs", ".offset")
 def _read_offset():
     try:
         with open(OFFSET_FILE, "r", encoding="utf-8") as f:
-            return int(f.read().strip())
+            val = int(f.read().strip())
+        return max(0, val)          # negative offsets -> 0
     except (FileNotFoundError, ValueError):
         return 0
 

@@ -70,6 +70,7 @@ class AgentState(TypedDict, total=False):
     lines: list
     errors: list
     diagnosis: dict
+    fresh_diagnosis: bool   # True only when node_diagnose actually ran THIS pass
     allowed: bool
     reason: str
     attempt: int
@@ -84,15 +85,22 @@ class AgentState(TypedDict, total=False):
 # ---------------------------------------------------------------------------
 
 def node_monitor(state):
-    """OBSERVE - tail the log and collect ERROR/FATAL lines."""
+    """OBSERVE - tail the log and collect ERROR/FATAL lines.
+
+    fresh_diagnosis resets to False on every scan; it only flips True inside
+    node_diagnose, so a scan that skips diagnose (no new errors) is never
+    mistaken for one that produced an up-to-date diagnosis.
+    """
     lines = monitor.read_new_lines()
-    return {"lines": lines, "errors": monitor.extract_errors(lines)}
+    return {"lines": lines, "errors": monitor.extract_errors(lines),
+            "fresh_diagnosis": False}
 
 
 def node_diagnose(state):
     """DIAGNOSE - classify errors; None diagnosis means nothing to act on."""
     errors = state.get("errors") or []
-    return {"diagnosis": diagnose.classify(errors) if errors else None,
+    diagnosis = diagnose.classify(errors) if errors else None
+    return {"diagnosis": diagnosis, "fresh_diagnosis": diagnosis is not None,
             "verification": None, "outcome": None, "declined": False}
 
 
@@ -120,7 +128,8 @@ def node_remediate(state):
                     "attempt": attempt}
 
     outcome = remediate.apply(state["diagnosis"]["action"])
-    return {"outcome": outcome, "attempt": attempt, "action_taken": True}
+    return {"outcome": outcome, "attempt": attempt, "action_taken": True,
+            "declined": False}
 
 
 def node_verify(state):
@@ -137,11 +146,10 @@ def node_report(state):
         print("=" * 70 + "\n")
         return state
 
-    if state.get("diagnosis") is None:
-        # Retry found no NEW errors but the machine is still unhealthy:
-        # show the honest still-broken status instead of a full incident.
-        _, problems, _state = state.get("verification",
-                                        (False, ["unknown"], {}))
+    if not state.get("fresh_diagnosis"):
+        # Retry found the machine still broken, so report the problems and exit.
+        _, problems, _state = (state.get("verification")
+                               or (False, ["unknown"], {}))
         print(f" [{_now_short()}] STILL BROKEN -> {', '.join(problems)}"
               f"  (attempts used: {state.get('attempt', 0)})\n")
         return {"action_taken": True}
@@ -184,7 +192,7 @@ def route_after_monitor(state):
 
 def route_after_diagnose(state):
     """No fresh classification -> decide between quiet exit and status report."""
-    if state.get("diagnosis") is not None:
+    if state.get("fresh_diagnosis"):
         return "safety"
     return "report" if state.get("attempt") else "clear"
 

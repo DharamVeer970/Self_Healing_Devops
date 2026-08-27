@@ -35,9 +35,11 @@ def email_config():
     values = {k: os.environ.get(k, "").strip() for k in required}
     if not all(values.values()):
         return None
+    port_str = os.environ.get("EMAIL_SMTP_PORT", "587").strip()
+    port = int(port_str) if port_str else 587
     return {
         "host": values["EMAIL_SMTP_HOST"],
-        "port": int(os.environ.get("EMAIL_SMTP_PORT", "587")),
+        "port": port,
         "username": values["EMAIL_USERNAME"],
         "password": values["EMAIL_PASSWORD"],
         "to": [addr.strip() for addr in values["EMAIL_TO"].split(",")

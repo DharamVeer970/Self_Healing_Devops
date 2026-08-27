@@ -13,8 +13,6 @@ service/__pycache__/
 # Dev / test-local files (kept on disk locally, not pushed)
 tests/
 pytest.ini
-seed_test.py
-stop_demo.py
 
 # Runtime cache
 .pytest_cache/
