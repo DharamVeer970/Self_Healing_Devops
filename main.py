@@ -10,7 +10,7 @@ Usage:
     python main.py --once     # single scan cycle, then exit (great for testing)
 
 Run the fake broken server in a second terminal first:
-    python demo_env/flaky_app.py
+    python service/flaky_app.py
 """
 
 import argparse

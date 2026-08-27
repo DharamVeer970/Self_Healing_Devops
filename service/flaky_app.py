@@ -7,7 +7,7 @@ It maintains a fake "system state" in state.json:
   - backend_up    : can be switched off -> causes 502 Bad Gateway errors
 
 Run it in one terminal:
-    python demo_env/flaky_app.py
+    python service/flaky_app.py
 """
 
 import json

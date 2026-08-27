@@ -12,8 +12,8 @@ import sys
 from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STATE_FILE = os.path.join(BASE_DIR, "demo_env", "state.json")
-FLAKY_APP = os.path.join(BASE_DIR, "demo_env", "flaky_app.py")
+STATE_FILE = os.path.join(BASE_DIR, "service", "state.json")
+FLAKY_APP = os.path.join(BASE_DIR, "service", "flaky_app.py")
 
 
 def _load_state():

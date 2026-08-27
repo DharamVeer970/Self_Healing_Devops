@@ -19,4 +19,4 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Compile-check all sources
-        run: python -m compileall -q main.py agent demo_env
+        run: python -m compileall -q main.py agent service

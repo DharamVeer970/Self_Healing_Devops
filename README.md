@@ -35,7 +35,7 @@ The agent is a loop of small nodes. The LLM *suggests*; deterministic code
 
 ```
             +-------------------------------------+
-            |        demo_env/flaky_app.py        |
+            |        service/flaky_app.py        |
             |  (fake server -> logs/app.log)      |
             +------------------+------------------+
                                |
@@ -99,7 +99,7 @@ Self_Healing_Devops/
 │   ├── graph.py            # LANGGRAPH engine (--graph): cyclic state machine
 │   ├── reporting.py        # REPORT: shared incident summary for both engines
 │   └── notify.py           # DELIVER: Slack webhook + SMTP email push
-├── demo_env/flaky_app.py   # simulated flaky server (replaces Docker)
+├── service/flaky_app.py    # the monitored app (simulated production service)
 ├── logs/                   # app.log (+ .offset for tail position)
 ├── .github/workflows/ci.yml# GitHub Actions: compile-check on push/PR
 ├── requirements.txt        # langgraph + notification deps (runtime = stdlib)
@@ -124,7 +124,7 @@ Open two terminals in the project folder:
 (it leaks memory until it crashes, all by itself):
 
 ```bash
-python demo_env/flaky_app.py
+python service/flaky_app.py
 ```
 
 **Terminal 2 — start the agent:**

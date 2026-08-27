@@ -61,8 +61,8 @@ def extract_errors(lines):
 
 
 def latest_state():
-    """Read the simulated machine state that demo_env/state.json holds."""
-    path = os.path.join(BASE_DIR, "demo_env", "state.json")
+    """Read the simulated machine state that service/state.json holds."""
+    path = os.path.join(BASE_DIR, "service", "state.json")
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
