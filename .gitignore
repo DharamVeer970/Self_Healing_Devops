@@ -1,0 +1,18 @@
+# Secrets - NEVER commit
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# Runtime artifacts
+logs/
+logs/app.log*
+logs/.offset
+logs/*.archived_*
+tests/
+# Test / tooling caches
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
