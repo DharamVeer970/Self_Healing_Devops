@@ -35,7 +35,7 @@ The agent is a loop of small nodes. The LLM *suggests*; deterministic code
 
 ```
             +-------------------------------------+
-            |        service/flaky_app.py        |
+            |        service/flaky_app.py         |
             |  (fake server -> logs/app.log)      |
             +------------------+------------------+
                                |
