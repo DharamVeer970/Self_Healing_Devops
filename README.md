@@ -218,8 +218,6 @@ every cycle. The `/chat` probe bills your chat + reranker providers, so it is
 the workflow forwards). Leave it off and the watchdog still detects every crash
 and heals it — it just won't spend tokens confirming the chatbot on calm cycles.
 
-`WATCHDOG_APP_URL` overrides the target; `WATCHDOG_CHAT_QUERY` customizes the
-optional chat probe's test question.
 
 Files: `watchdog/monitor.py` (HTTP probes), `watchdog/diagnose.py`
 (decision rules), `watchdog/remediate.py` (Render API restart + deploy

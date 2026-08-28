@@ -19,8 +19,7 @@ import time
 import urllib.error
 import urllib.request
 
-APP_URL = os.environ.get(
-    "WATCHDOG_APP_URL", "https://dharam-portfolio-api.onrender.com")
+APP_URL = os.environ.get("WATCHDOG_APP_URL", "https://dharam-portfolio-api.onrender.com")
 PING_DELAYS = (0, 20, 45)            # seconds to wait BEFORE each probe
 CHAT_TIMEOUT = 60                    # cold RAG replies can be slow
 
@@ -71,19 +70,13 @@ def check_server(delays=PING_DELAYS):
 
 
 def check_chat():
-    """Probe POST /chat with a test query (opt-in, billed tokens).
-
-    Requires WATCHDOG_CHAT_QUERY to be set; returns (None, 0, "") when no
-    query is configured so a stray opt-in never fires an empty request.
+    """Probe POST /chat with an empty test query (opt-in, billed tokens).
 
     Returns (code or None, elapsed_ms, reply_snippet).
     """
-    query = os.environ.get("WATCHDOG_CHAT_QUERY", "").strip()
-    if not query:
-        return None, 0, ""
     code, ms, body = _request(
         f"{APP_URL}/chat",
-        payload={"query": query, "history": []},
+        payload={"query": "", "history": []},
         timeout=CHAT_TIMEOUT,
     )
     snippet = ""
