@@ -208,9 +208,18 @@ What it monitors and decides:
 |---|---|
 | `GET /` fails on every retry (503/timeout) | **restart via Render API** → verify deploy is `live` → verify the app answers 200 again |
 | First probe fails but a retry succeeds | free-tier cold start (server was sleeping) — **no action**, logged as normal |
-| `POST /chat` returns 502 | one restart attempt; verification reports honestly if the upstream provider itself is down |
-| `POST /chat` returns 429 | **escalate only** — a restart never fixes rate-limiting |
+| `POST /chat` returns 502 (only if chat probe enabled) | one restart attempt; verification reports honestly if the upstream provider itself is down |
+| `POST /chat` returns 429 (only if chat probe enabled) | **escalate only** — a restart never fixes rate-limiting |
 | Everything healthy | one-line "all clear" |
+
+**Token-aware by default.** The server liveness check (`GET /`) is free and runs
+every cycle. The `/chat` probe bills your chat + reranker providers, so it is
+**off unless you set `WATCHDOG_CHAT_PROBE=1`** (in `.env`, or as the repo secret
+the workflow forwards). Leave it off and the watchdog still detects every crash
+and heals it — it just won't spend tokens confirming the chatbot on calm cycles.
+
+`WATCHDOG_APP_URL` overrides the target; `WATCHDOG_CHAT_QUERY` customizes the
+optional chat probe's test question.
 
 Files: `watchdog/monitor.py` (HTTP probes), `watchdog/diagnose.py`
 (decision rules), `watchdog/remediate.py` (Render API restart + deploy

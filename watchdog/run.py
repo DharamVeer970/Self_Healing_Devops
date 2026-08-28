@@ -35,7 +35,7 @@ def run_cycle(auto=False):
     """One MONITOR -> ... -> REPORT pass. Returns True if it took action."""
     server_status, attempts = monitor.check_server()
     chat_code, chat_ms, snippet = None, 0, ""
-    if server_status != "down":
+    if server_status != "down" and monitor.chat_probe_enabled():
         chat_code, chat_ms, snippet = monitor.check_chat()
 
     diag = diagnose.classify(server_status, chat_code)
@@ -44,8 +44,11 @@ def run_cycle(auto=False):
     if action == "no_action":
         state = ("awake" if server_status == "awake"
                  else "recovered from cold start")
-        print(f"[{_now()}] all clear - server {state}, chat OK "
-              f"({chat_ms}ms, reply: {snippet or '-'})")
+        if chat_code is not None:
+            chat = f"chat OK ({chat_ms}ms, reply: {snippet or '-'})"
+        else:
+            chat = "chat probe off (set WATCHDOG_CHAT_PROBE=1 to enable)"
+        print(f"[{_now()}] all clear - server {state}, {chat}")
         return False
 
     errors = [f"probe {i + 1}: code={code} ({ms}ms)"

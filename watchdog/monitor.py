@@ -8,19 +8,29 @@ false alarms, so each probe round classifies explicitly:
                     returned 200 -> that was just a cold start, normal
     down            every probe failed -> real crash
 
-POST /chat is probed separately because "server alive" != "chatbot working":
-    200 OK | 429 upstream rate-limited | 502 chat/retrieval provider failed
+The server liveness probe (GET /) is free. The chat probe (POST /chat)
+invoices the chat + reranker providers, so it is OFF unless the operator
+explicitly opts in via WATCHDOG_CHAT_PROBE=1.
 """
 
 import json
+import os
 import time
 import urllib.error
 import urllib.request
 
-APP_URL = "https://dharam-portfolio-api.onrender.com"
-CHAT_TEST_QUERY = "What projects has Dharam built?"
+APP_URL = os.environ.get(
+    "WATCHDOG_APP_URL", "https://dharam-portfolio-api.onrender.com")
+CHAT_TEST_QUERY = os.environ.get(
+    "WATCHDOG_CHAT_QUERY", "What has Dharam built?")
 PING_DELAYS = (0, 20, 45)            # seconds to wait BEFORE each probe
 CHAT_TIMEOUT = 60                    # cold RAG replies can be slow
+
+
+def chat_probe_enabled():
+    """Whether the (paid) /chat probe should run this cycle."""
+    raw = os.environ.get("WATCHDOG_CHAT_PROBE", "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
 
 
 def _request(url, payload=None, timeout=30):

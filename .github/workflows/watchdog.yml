@@ -24,6 +24,10 @@ jobs:
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          # Paid /chat probe is OFF by default (saves LLM + reranker tokens).
+          # Flip to "1" only if you accept the cost of probing every cycle.
+          WATCHDOG_CHAT_PROBE: "0"
+          WATCHDOG_APP_URL: https://dharam-portfolio-api.onrender.com
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           EMAIL_SMTP_HOST: ${{ secrets.EMAIL_SMTP_HOST }}
           EMAIL_SMTP_PORT: ${{ secrets.EMAIL_SMTP_PORT }}
