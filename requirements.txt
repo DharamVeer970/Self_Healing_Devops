@@ -1,4 +1,2 @@
-# Runtime core: standard library only - no mandatory dependencies.
-#
-# Optional / used features:
+
 langgraph>=0.6,<0.7     # --graph engine (python main.py --graph)

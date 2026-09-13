@@ -1,0 +1,88 @@
+name: Reusable Heal-Agent Runner
+
+# ONE copy of every credential + notification wiring, shared by all the
+# scheduled workflows in this repo (watchdog.yml, self-heal.yml, ...).
+#
+# IMPORTANT: the actual secret VALUES live in exactly one place - GitHub:
+#   repo -> Settings -> Secrets and variables -> Actions
+# A workflow only *references* a secret by name with ${{ secrets.NAME }}.
+# Every job runs in its own clean container, so the job must be explicitly
+# granted the secrets it wants - and that single grant lives HERE, once.
+on:
+  workflow_call:
+    inputs:
+      run_command:
+        description: "Command that runs one healing cycle"
+        required: true
+        type: string
+
+jobs:
+  heal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run one healing cycle
+        run: ${{ inputs.run_command }}
+        env:
+          # ---- Render API (used by the watchdog; harmless elsewhere) ------
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          # Optional: explicit service IDs. Leave these secrets unset and the
+          # watchdog AUTO-DISCOVERS the IDs from RENDER_API_KEY by matching
+          # the URLs below - nothing to hand-copy.
+          RENDER_BACKEND_TRADING_SERVICE_ID: ${{ secrets.RENDER_BACKEND_TRADING_SERVICE_ID }}
+          RENDER_FRONTEND_TRADING_SERVICE_ID: ${{ secrets.RENDER_FRONTEND_TRADING_SERVICE_ID }}
+          RENDER_BACKEND_PORTFOLIO_SERVICE_ID: ${{ secrets.RENDER_BACKEND_PORTFOLIO_SERVICE_ID }}
+          # Paid /chat probe is OFF by default (saves LLM + reranker tokens).
+          WATCHDOG_CHAT_PROBE: "0"
+          # The 3 monitored Render services (update here if they ever change).
+          WATCHDOG_APP_URL: https://trading-agent-v6kg.onrender.com
+          WATCHDOG_FRONTEND_URL: https://trading-agent-1-4mha.onrender.com
+          WATCHDOG_PORTFOLIO_BACKEND_URL: https://dharam-portfolio-api.onrender.com
+          # CI guard: the agent must NEVER rewrite tracked source files here.
+          SCRIPT_PATCH_SOURCE: "0"
+          ALLOW_SOURCE_PATCH_IN_CI: "0"
+          # ---- LLM (optional - the script-writer agent uses it to write
+          # custom fix scripts; empty secret = offline rule mode) ---------
+          TOKENROUTER_API_KEY: ${{ secrets.TOKENROUTER_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+          # ---- Notifications (all optional - empty secret = skipped) ------
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          EMAIL_SMTP_HOST: ${{ secrets.EMAIL_SMTP_HOST }}
+          EMAIL_SMTP_PORT: ${{ secrets.EMAIL_SMTP_PORT }}
+          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+
+      # Fix scripts the agent writes on CI are ephemeral - upload them as a
+      # run artifact so you can download + review them from the Actions page.
+      - name: Upload agent fix scripts (if any)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-fix-scripts
+          path: fixes/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # Persist the URL up/down state between scheduled runs. Without this,
+      # every 20-min run would re-alarm "unknown -> down" because each runner
+      # starts with an empty disk.
+      - name: Restore URL state cache
+        if: always()
+        uses: actions/cache@v4
+        with:
+          path: logs/.url_state.json
+          key: url-state-${{ github.run_id }}
+          restore-keys: url-state-

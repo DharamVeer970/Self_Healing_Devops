@@ -7,14 +7,20 @@ Usage:
 """
 
 import argparse
+import hashlib
+import json
+import os
 import sys
 import time
 from datetime import datetime
 
 from agent import notify, safety, reporting
-from watchdog import diagnose, monitor, remediate
+from watchdog import diagnose, monitor, remediate, render_logs
 
 WATCHDOG_SLEEP = 300                    # seconds between loop cycles
+LOG_STATE_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "logs", ".watchdog_log_errors.json")
 
 
 def _now():
@@ -31,6 +37,75 @@ def _report(errors, diagnosis, outcome=None, verification=None):
     reporting.emit(errors, diagnosis, outcome, verification)
 
 
+def _hash_row(row):
+    return hashlib.sha1(
+        render_logs.text_of(row).encode("utf-8", "replace")).hexdigest()
+
+
+def _log_incidents(log_scan=None, state_file=None):
+    """Scan every service's logs and return only NEW error incidents.
+
+    Dedupe: the same error lines are reported once, then remembered in a
+    state file (logs/.watchdog_log_errors.json) so a 20-minute cron job
+    does not re-alarm on the same crash until new errors appear.
+
+    `log_scan` / `state_file` are injectable for tests.
+    """
+    if log_scan is None:
+        log_scan = render_logs.scan_all()
+    state_path = state_file or os.environ.get(
+        "WATCHDOG_LOG_STATE_FILE", LOG_STATE_FILE)
+
+    state = {}
+    if os.path.exists(state_path):
+        try:
+            with open(state_path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                state = loaded
+        except Exception:                    # noqa: BLE001 - corrupt = reset
+            state = {}
+
+    incidents = []
+    for inc in log_scan or []:
+        all_digests = {_hash_row(r) for r in inc.get("errors", [])}
+        seen = set(state.get(inc.get("service_id"), []) or [])
+        fresh = [r for r in inc.get("errors", [])
+                 if _hash_row(r) not in seen]
+        if fresh:
+            incidents.append({**inc, "errors": fresh})
+        state[inc.get("service_id", "")] = sorted(all_digests | seen)[-500:]
+
+    try:
+        os.makedirs(os.path.dirname(state_path), exist_ok=True)
+        with open(state_path, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+    except OSError:                          # noqa: BLE001 - reporting only
+        pass
+    return incidents
+
+
+def _report_log_incidents(incidents):
+    """Escalate the NEW remote-log errors to a human (print + notify)."""
+    for inc in incidents:
+        errors = [render_logs.text_of(r) for r in inc["errors"]]
+        sample = "\n".join(errors[-3:])
+        diagnosis = {
+            "error_line": (f"{inc['label']} ({inc['url']}) "
+                           "logged an error"),
+            "diagnosis": (f"{inc['label']} is reachable, but its recent "
+                          f"Render logs show errors:\n{sample}"),
+            "action": "escalate_to_human",
+            "confidence": 0.6,
+        }
+        _report(errors, diagnosis)
+        print(f" ⚠ LOG ERROR in {inc['label']}: {inc['url']}")
+        for line in errors[-3:]:
+            print(f"   ⚠ {line[:200]}")
+        print()
+    print(f" ⚠ {len(incidents)} service(s) logged new errors (see report).\n")
+
+
 def run_cycle(auto=False):
     """One MONITOR -> ... -> REPORT pass. Returns True if it took action."""
     server_status, attempts = monitor.check_server()
@@ -41,6 +116,10 @@ def run_cycle(auto=False):
     diag = diagnose.classify(server_status, chat_code)
     action = diag["action"]
 
+    # Also scan the REAL logs of every configured Render service for new
+    # ERROR/FATAL lines (deduped, so each error alarms exactly once).
+    log_incidents = _log_incidents()
+
     if action == "no_action":
         state = ("awake" if server_status == "awake"
                  else "recovered from cold start")
@@ -48,6 +127,9 @@ def run_cycle(auto=False):
             chat = f"chat OK ({chat_ms}ms, reply: {snippet or '-'})"
         else:
             chat = "chat probe off (set WATCHDOG_CHAT_PROBE=1 to enable)"
+        if log_incidents:
+            _report_log_incidents(log_incidents)
+            return True
         print(f"[{_now()}] all clear - server {state}, {chat}")
         return False
 
@@ -55,6 +137,9 @@ def run_cycle(auto=False):
               for i, (code, ms) in enumerate(attempts)]
     if chat_code:
         errors.append(f"chat probe: code={chat_code} ({chat_ms}ms)")
+    for inc in log_incidents:
+        errors.append(f"{inc['label']} LOG ERROR: "
+                      f"{render_logs.text_of(inc['errors'][-1])[:150]}")
 
     # ---- SAFETY -------------------------------------------------------
     allowed, reason = safety.check(action)

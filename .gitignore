@@ -10,9 +10,5 @@ logs/
 service/state.json
 service/__pycache__/
 
-# Dev / test-local files (kept on disk locally, not pushed)
-tests/
-pytest.ini
-
 # Runtime cache
 .pytest_cache/

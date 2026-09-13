@@ -1,0 +1,19 @@
+name: Self-Heal Agent
+
+# Runs the full self-healing agent (URL connectivity check + log scan) on a
+# schedule. CI-safe: the agent NEVER edits tracked source files here - it
+# probes, diagnoses, and writes fix scripts to fixes/ for your review
+# (nothing is pushed back automatically).
+on:
+  schedule:
+    - cron: "0 */6 * * *"        # every 6 hours (GitHub cron can drift)
+  workflow_dispatch: {}           # manual "Run workflow" button
+
+jobs:
+  heal:
+    # Credentials + notifications are wired ONCE in the shared reusable
+    # workflow (.github/workflows/heal-agent.yml) - not repeated here.
+    uses: ./.github/workflows/heal-agent.yml
+    with:
+      run_command: python main.py --once --auto
+    secrets: inherit

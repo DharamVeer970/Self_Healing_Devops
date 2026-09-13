@@ -7,31 +7,9 @@ on:
 
 jobs:
   watchdog:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Run one healing cycle
-        run: python -m watchdog.run --once --auto
-        env:
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
-          # Paid /chat probe is OFF by default (saves LLM + reranker tokens).
-          # Flip to "1" only if you accept the cost of probing every cycle.
-          WATCHDOG_CHAT_PROBE: "0"
-          WATCHDOG_APP_URL: https://dharam-portfolio-api.onrender.com
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          EMAIL_SMTP_HOST: ${{ secrets.EMAIL_SMTP_HOST }}
-          EMAIL_SMTP_PORT: ${{ secrets.EMAIL_SMTP_PORT }}
-          EMAIL_USERNAME: ${{ secrets.EMAIL_USERNAME }}
-          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+    # Credentials + notifications are wired ONCE in the shared reusable
+    # workflow (.github/workflows/heal-agent.yml) - not repeated here.
+    uses: ./.github/workflows/heal-agent.yml
+    with:
+      run_command: python -m watchdog.run --once --auto
+    secrets: inherit

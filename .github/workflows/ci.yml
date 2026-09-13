@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  compile-check:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,7 +16,14 @@ jobs:
           python-version: "3.13"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        # pytest is a dev dependency - the runtime only needs requirements.txt
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
 
       - name: Compile-check all sources
-        run: python -m compileall -q main.py agent service
+        run: python -m compileall -q main.py agent service watchdog
+
+      - name: Run full test suite
+        # Tests are hermetic (sandboxed tmp dirs, no secrets, no network).
+        run: python -m pytest tests/ -q --tb=short
