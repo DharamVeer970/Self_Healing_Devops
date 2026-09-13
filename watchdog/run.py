@@ -38,8 +38,10 @@ def _report(errors, diagnosis, outcome=None, verification=None):
 
 
 def _hash_row(row):
+    # SHA1 used only for dedupe (non-security), marked safe (S4790).
     return hashlib.sha1(
-        render_logs.text_of(row).encode("utf-8", "replace")).hexdigest()
+        render_logs.text_of(row).encode("utf-8", "replace"),
+        usedforsecurity=False).hexdigest()
 
 
 def _log_incidents(log_scan=None, state_file=None):
@@ -106,33 +108,29 @@ def _report_log_incidents(incidents):
     print(f" ⚠ {len(incidents)} service(s) logged new errors (see report).\n")
 
 
-def run_cycle(auto=False):
-    """One MONITOR -> ... -> REPORT pass. Returns True if it took action."""
+def _probe_server():
+    """Probe server and optionally chat; return (status, attempts, chat_code, ms, snippet)."""
     server_status, attempts = monitor.check_server()
     chat_code, chat_ms, snippet = None, 0, ""
     if server_status != "down" and monitor.chat_probe_enabled():
         chat_code, chat_ms, snippet = monitor.check_chat()
+    return server_status, attempts, chat_code, chat_ms, snippet
 
-    diag = diagnose.classify(server_status, chat_code)
-    action = diag["action"]
 
-    # Also scan the REAL logs of every configured Render service for new
-    # ERROR/FATAL lines (deduped, so each error alarms exactly once).
-    log_incidents = _log_incidents()
+def _handle_no_action(server_status, chat_code, chat_ms, snippet, log_incidents):
+    state = "awake" if server_status == "awake" else "recovered from cold start"
+    if chat_code is not None:
+        chat = f"chat OK ({chat_ms}ms, reply: {snippet or '-'})"
+    else:
+        chat = "chat probe off (set WATCHDOG_CHAT_PROBE=1 to enable)"
+    if log_incidents:
+        _report_log_incidents(log_incidents)
+        return True
+    print(f"[{_now()}] all clear - server {state}, {chat}")
+    return False
 
-    if action == "no_action":
-        state = ("awake" if server_status == "awake"
-                 else "recovered from cold start")
-        if chat_code is not None:
-            chat = f"chat OK ({chat_ms}ms, reply: {snippet or '-'})"
-        else:
-            chat = "chat probe off (set WATCHDOG_CHAT_PROBE=1 to enable)"
-        if log_incidents:
-            _report_log_incidents(log_incidents)
-            return True
-        print(f"[{_now()}] all clear - server {state}, {chat}")
-        return False
 
+def _collect_errors(attempts, chat_code, chat_ms, log_incidents):
     errors = [f"probe {i + 1}: code={code} ({ms}ms)"
               for i, (code, ms) in enumerate(attempts)]
     if chat_code:
@@ -140,36 +138,64 @@ def run_cycle(auto=False):
     for inc in log_incidents:
         errors.append(f"{inc['label']} LOG ERROR: "
                       f"{render_logs.text_of(inc['errors'][-1])[:150]}")
+    return errors
 
-    # ---- SAFETY -------------------------------------------------------
-    allowed, reason = safety.check(action)
+
+def _maybe_escalate(action, allowed, reason, errors, diag):
     if action == "escalate_to_human" or not allowed:
         _report(errors, diag)
-        print(f" ⚠ ESCALATED TO HUMAN -> {reason}\n")
+        print(f" \u26a0 ESCALATED TO HUMAN -> {reason}\n")
         return True
+    return False
 
-    # ---- REMEDIATE (approval unless --auto) ----------------------------
-    if not auto:
-        _report(errors, diag)
-        answer = input(f" ▶ Apply '{action}' now? [y/N]: ").strip().lower()
-        if answer != "y":
-            print(" Skipped by operator. Will re-detect next cycle.\n")
-            return True
 
+def _maybe_prompt_operator(action, errors, diag, auto):
+    if auto:
+        return False
+    _report(errors, diag)
+    answer = input(f" \u25b6 Apply '{action}' now? [y/N]: ").strip().lower()
+    if answer != "y":
+        print(" Skipped by operator. Will re-detect next cycle.\n")
+        return True
+    return False
+
+
+def _do_restart(errors, diag):
     print(f" [{_now()}] {diag['diagnosis']}")
     print(f" [{_now()}] triggering Render deploy (restart)...")
     try:
         deploy_id = remediate.trigger_restart()
-    except Exception as exc:                # noqa: BLE001 - report honestly
+    except Exception as exc:  # NOSONAR - report honestly, never crash watchdog
         _report(errors, diag,
                 outcome=f"restart could not be triggered: {exc}",
                 verification=(False, ["restart not triggered"], {}))
-        return True
-
+        return True, None
     ok, msg = remediate.verify_restart(deploy_id, monitor)
     verification = (True, [], {}) if ok else (False, [msg], {})
     _report(errors, diag, outcome=msg, verification=verification)
-    return True
+    return True, ok
+
+
+def run_cycle(auto=False):
+    """One MONITOR -> ... -> REPORT pass. Returns True if it took action."""
+    server_status, attempts, chat_code, chat_ms, snippet = _probe_server()
+    diag = diagnose.classify(server_status, chat_code)
+    log_incidents = _log_incidents()
+
+    if diag["action"] == "no_action":
+        return _handle_no_action(server_status, chat_code, chat_ms, snippet, log_incidents)
+
+    errors = _collect_errors(attempts, chat_code, chat_ms, log_incidents)
+    allowed, reason = safety.check(diag["action"])
+
+    if _maybe_escalate(diag["action"], allowed, reason, errors, diag):
+        return True
+
+    if _maybe_prompt_operator(diag["action"], errors, diag, auto):
+        return True
+
+    acted, _ = _do_restart(errors, diag)
+    return acted
 
 
 def main():

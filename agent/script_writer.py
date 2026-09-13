@@ -73,8 +73,9 @@ def _cleanup_injected_logging(filepath):
 
     pattern = re.compile(
         r"\n?# --- auto-added logging \(.*?\) ---\n"
-        r"(?:.*\n)*?"
+        r".*?"
         r"# --- end auto-added logging ---\n?",
+        re.DOTALL,
     )
     if not pattern.search(text):
         return False, f"{os.path.basename(filepath)} has no injected block"
@@ -88,6 +89,38 @@ def _cleanup_injected_logging(filepath):
         return False, f"Cannot write {filepath}: {exc}"
 
 
+def _skip_leading_blank(lines, start):
+    """Advance past blank lines from start; return new index."""
+    i = start
+    n = len(lines)
+    while i < n and not lines[i].strip():
+        i += 1
+    return i
+
+
+def _skip_docstring(lines, start):
+    """If lines[start] opens a module docstring, skip the whole block."""
+    n = len(lines)
+    if start >= n:
+        return start
+    opening = lines[start].lstrip()
+    delim = None
+    if opening.startswith('"""'):
+        delim = '"""'
+    elif opening.startswith("'''"):
+        delim = "'''"
+    if delim is None:
+        return start
+    # Single-line docstring: """text"""
+    if delim in opening[3:]:
+        return start + 1
+    # Multi-line: scan to closing delimiter
+    i = start + 1
+    while i < n and delim not in lines[i]:
+        i += 1
+    return i + 1
+
+
 def _find_insert_at(lines):
     """Return the line index where an import-time block should be inserted.
 
@@ -95,33 +128,16 @@ def _find_insert_at(lines):
     blank lines / comments / import statements that follow it. If the whole
     file is imports, appends at EOF.
     """
-    i = 0
     n = len(lines)
-    while i < n and not lines[i].strip():
-        i += 1
-    if i < n:
-        opening = lines[i].lstrip()
-        delim = None
-        if opening.startswith('"""'):
-            delim = '"""'
-        elif opening.startswith("'''"):
-            delim = "'''"
-        if delim is not None:
-            if delim in opening[3:]:
-                i += 1
-            else:
-                i += 1
-                while i < n and delim not in lines[i]:
-                    i += 1
-                i += 1
+    i = _skip_leading_blank(lines, 0)
+    i = _skip_docstring(lines, i)
 
-    insert_at = n
+    # Find first non-import / non-comment line after the header.
     for j in range(i, n):
         stripped = lines[j].strip()
         if stripped and not stripped.startswith(("import ", "from ", "#")):
-            insert_at = j
-            break
-    return insert_at
+            return j
+    return n
 
 
 def _add_logging_to_file(filepath):
@@ -156,7 +172,7 @@ def _add_logging_to_file(filepath):
         "    _fh.setFormatter(logging.Formatter(\n",
         "        '%(asctime)s | %(name)s | %(levelname)s | %(message)s'))\n",
         "    _logger.addHandler(_fh)\n",
-        f"# --- end auto-added logging ---\n",
+        "# --- end auto-added logging ---\n",
         "\n",
     ]
 
@@ -170,11 +186,12 @@ def _add_logging_to_file(filepath):
         return False, f"Cannot write {filepath}: {exc}"
 
 
-def _apply_llm_logging_patch(filepath, patch_code, error_lines):
+def _apply_llm_logging_patch(filepath, patch_code, _error_lines=None):
     """Splice an LLM-authored logging snippet into filepath after the imports.
 
     The snippet is wrapped in the same auto-added markers used by the
     offline patcher so `_cleanup_injected_logging` can remove it later.
+    _error_lines is kept for API compatibility but unused (patch is from LLM).
 
     Returns (applied: bool, message: str).
     """
@@ -348,8 +365,16 @@ def _llm_generate_logging_patch(filepath, error_lines):
     )
     if not code:
         return None, "LLM unavailable or call failed - using offline patch"
-    # Strip accidental markdown fences around the snippet.
-    code = re.sub(r"^```(?:python)?\s*|\s*```$", "", code).strip()
+    # Strip accidental markdown fences with plain string slicing.
+    code = code.strip()
+    if code.startswith("```"):
+        code = code[3:]
+        if code[:6].lower() == "python":
+            code = code[6:]
+        code = code.lstrip()
+    if code.endswith("```"):
+        code = code[:-3]
+    code = code.strip()
     if "logger" not in code.lower() and "logging" not in code.lower():
         return None, "LLM output did not look like a logging setup - skipped"
     return code, "Agent generated logging patch from file context"
@@ -358,6 +383,104 @@ def _llm_generate_logging_patch(filepath, error_lines):
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
+
+def _is_logging_issue(error_lines):
+    """Check if error text suggests a logging gap."""
+    error_text = " ".join(error_lines[-5:]) if error_lines else ""
+    low = error_text.lower()
+    return "log" in low or "logging" in low
+
+
+def _collect_logging_patches(error_lines):
+    """Apply LLM + offline logging patches; return list of messages or []."""
+    applied = []
+    for fp in _find_python_files():
+        if _file_has_logging(fp):
+            continue
+        code, _ = _llm_generate_logging_patch(fp, error_lines)
+        if code:
+            ok, msg = _apply_llm_logging_patch(fp, code, error_lines)
+            if ok:
+                applied.append(msg)
+    offline = _patch_logging_gaps()
+    return applied + offline
+
+
+def _sanitize_action(action):
+    """Make action safe for filenames (explicit grouping, no backtracking risk)."""
+    # Simple char class – linear, no super-linear backtracking (S8786 fix).
+    safe = re.sub(r"[^a-z0-9]+", "_", action.lower())
+    return safe.strip("_") or "fix"
+
+
+def _build_fix_content(diagnosis, action, conf, llm_content):
+    """Build header + LLM content for a fix script."""
+    header = (
+        '"""\nAuto-generated fix for: ' + diagnosis["diagnosis"] + "\n"
+        f"Action: {action} | Confidence: {conf}\n"
+        "Review before running. "
+        f"Generated at {datetime.now():%Y-%m-%d %H:%M:%S}.\n" + '"""' + "\n\n"
+    )
+    return header + llm_content
+
+
+def _attempt_source_patching(error_lines):
+    """Try Strategy 1: direct source logging patch (opt-in only)."""
+    if not _source_patching_allowed() or not _is_logging_issue(error_lines):
+        return None
+    patches = _collect_logging_patches(error_lines)
+    if patches:
+        return {
+            "strategy": "patch_source_logging",
+            "patches": patches,
+            "needs_review": False,
+            "message": "Agent wrote logging into files that had none. Review the changes.",
+        }
+    return None
+
+
+def _attempt_llm_script(error_lines, diagnosis):
+    """Try Strategy 2: LLM generates a custom fix script."""
+    llm_content = _llm_generate_fix(error_lines, diagnosis)
+    if not llm_content:
+        return None
+    action = diagnosis.get("action", "")
+    conf = diagnosis.get("confidence", 0)
+    safe_action = _sanitize_action(action)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"llm_fix_{safe_action}_{ts}.py"
+    content = _build_fix_content(diagnosis, action, conf, llm_content)
+
+    if _is_dry_run():
+        fix_dir = os.environ.get("SCRIPT_FIX_DIR", FIX_DIR)
+        filepath = os.path.join(fix_dir, filename)
+        return {
+            "strategy": "llm_script_dry_run",
+            "filepath": filepath,
+            "content": content,
+            "needs_review": True,
+            "message": f"[DRY RUN] Would write fix script to {filename}",
+        }
+
+    fix_dir = _resolve_fix_dir()
+    filepath = os.path.join(fix_dir, filename)
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(content)
+        return {
+            "strategy": "llm_script",
+            "filepath": filepath,
+            "content": content,
+            "needs_review": True,
+            "message": f"Fix script written to {filename} - review before running",
+        }
+    except OSError as exc:
+        return {
+            "strategy": "none",
+            "needs_review": True,
+            "message": f"Could not write fix script: {exc}",
+        }
+
 
 def attempt_fix(error_lines, diagnosis):
     """
@@ -373,82 +496,14 @@ def attempt_fix(error_lines, diagnosis):
         {"strategy": ..., "patches"/"filepath": ..., "content": ...,
          "needs_review": bool, "message": ...}
     """
-    action = diagnosis.get("action", "")
-    conf = diagnosis.get("confidence", 0)
-    error_text = " ".join(error_lines[-5:]) if error_lines else ""
+    patched = _attempt_source_patching(error_lines)
+    if patched:
+        return patched
 
-    # --- Strategy 1 (OPT-IN, local only): direct source patching ----------
-    # Default OFF everywhere, force-OFF on CI runners. When enabled, the
-    # "no logs showing" case lets the agent edit the failing files directly
-    # (LLM first, deterministic block only as offline last resort).
-    if _source_patching_allowed() and (
-            "log" in error_text.lower() or "logging" in error_text.lower()):
-        applied_msgs = []
-        for fp in _find_python_files():
-            if _file_has_logging(fp):
-                continue
-            code, _msg = _llm_generate_logging_patch(fp, error_lines)
-            if code:
-                ok, msg = _apply_llm_logging_patch(fp, code, error_lines)
-                if ok:
-                    applied_msgs.append(msg)
-        offline = _patch_logging_gaps()
-        if applied_msgs or offline:
-            return {
-                "strategy": "patch_source_logging",
-                "patches": applied_msgs + offline,
-                "needs_review": False,
-                "message": "Agent wrote logging into files that had none. Review the changes.",
-            }
+    llm_result = _attempt_llm_script(error_lines, diagnosis)
+    if llm_result:
+        return llm_result
 
-    # --- Strategy 2: LLM generates a custom fix ---
-    llm_content = _llm_generate_fix(error_lines, diagnosis)
-    if llm_content:
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_action = re.sub(r"[^a-z0-9]+", "_", action.lower()).strip("_") or "fix"
-        filename = f"llm_fix_{safe_action}_{ts}.py"
-
-        header = (
-            '"""\nAuto-generated fix for: ' + diagnosis["diagnosis"] + "\n"
-            f"Action: {action} | Confidence: {conf}\n"
-            f"Review before running. "
-            f"Generated at {datetime.now():%Y-%m-%d %H:%M:%S}.\n" + '"""' + '\n\n'
-        )
-        content = header + llm_content
-
-        if _is_dry_run():
-            # Dry run: compute the path (no mkdir) and report without writing.
-            fix_dir = os.environ.get("SCRIPT_FIX_DIR", FIX_DIR)
-            filepath = os.path.join(fix_dir, filename)
-            return {
-                "strategy": "llm_script_dry_run",
-                "filepath": filepath,
-                "content": content,
-                "needs_review": True,
-                "message": f"[DRY RUN] Would write fix script to {filename}",
-            }
-
-        fix_dir = _resolve_fix_dir()
-        filepath = os.path.join(fix_dir, filename)
-
-        try:
-            with open(filepath, "w", encoding="utf-8") as f:
-                f.write(content)
-            return {
-                "strategy": "llm_script",
-                "filepath": filepath,
-                "content": content,
-                "needs_review": True,
-                "message": f"Fix script written to {filename} - review before running",
-            }
-        except OSError as exc:
-            return {
-                "strategy": "none",
-                "needs_review": True,
-                "message": f"Could not write fix script: {exc}",
-            }
-
-    # --- No strategy available ---
     return {
         "strategy": "none",
         "needs_review": True,

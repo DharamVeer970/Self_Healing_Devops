@@ -47,9 +47,10 @@ def test_healthy_verification():
 
 def test_broken_verification_lists_problems():
     out = reporting.format_report(["err"], DIAG,
-                                  verification=(False, ["down", "disk"], {}))
+                                   verification=(False, ["down", "disk"], {}))
     assert "BROKEN" in out
-    assert "down" in out and "disk" in out
+    assert "down" in out
+    assert "disk" in out
 
 
 def test_verification_omitted_when_none():
@@ -86,7 +87,8 @@ def test_emit_calls_deliver_with_title_and_body():
     title = deliver.call_args.kwargs["title"]
     body = deliver.call_args.kwargs["body"]
     assert title == "[Self-Healing Agent] rotate_logs"
-    assert "error" in body and "ok" in body
+    assert "error" in body
+    assert "ok" in body
 
 
 def test_emit_prints_delivery_status_when_deliveries(capsys):

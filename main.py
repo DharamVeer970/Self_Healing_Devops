@@ -145,7 +145,7 @@ def scan_cycle(auto=False):
     action = diagnosis["action"]
 
     # ---- SAFETY CHECK -----------------------------------------------------
-    allowed, reason = safety.check(action)
+    allowed, _reason = safety.check(action)
 
     if action == "escalate_to_human" or not allowed:
         _handle_escalation(errors, diagnosis)
@@ -174,7 +174,7 @@ def scan_cycle(auto=False):
     return True
 
 
-def main():
+def _parse_args():
     parser = argparse.ArgumentParser(description="Self-Healing DevOps Agent")
     parser.add_argument("--auto", action="store_true",
                         help="auto-apply allowlisted fixes without asking")
@@ -185,24 +185,22 @@ def main():
                              "(cyclic state machine)")
     parser.add_argument("--check-urls", action="store_true",
                         help="run URL connectivity check and print status, then exit")
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    _utf8_console()
-    print(BANNER)
 
-    # --check-urls: standalone mode, just check URLs
-    if args.check_urls:
-        events = url_checker.check_all()
-        if events:
-            print("\n URL state changes detected:")
-            for ev in events:
-                print(f"  [{ev['at']}] {ev['url']}: "
-                      f"{ev['from']} -> {ev['to']} ({ev['detail']})")
-        else:
-            print("\n No URL state changes.")
-        print(f"\n{url_checker.summary()}")
-        return
+def _handle_check_urls():
+    events = url_checker.check_all()
+    if events:
+        print("\n URL state changes detected:")
+        for ev in events:
+            print(f"  [{ev['at']}] {ev['url']}: "
+                  f"{ev['from']} -> {ev['to']} ({ev['detail']})")
+    else:
+        print("\n No URL state changes.")
+    print(f"\n{url_checker.summary()}")
 
+
+def _print_startup(args):
     engine = "LangGraph" if args.graph else "plain loop"
     if args.graph and not agent_graph.HAS_LANGGRAPH:
         print(" \u26a0 langgraph not installed - falling back to plain loop."
@@ -219,6 +217,8 @@ def main():
           f"\n LLM:    {llm}\n Notify: {configured}"
           f"\n URLs:   {monitored}\n")
 
+
+def _run_loop(args):
     while True:
         if args.graph:
             agent_graph.run_cycle(auto=args.auto)
@@ -227,6 +227,19 @@ def main():
         if args.once:
             break
         time.sleep(3)
+
+
+def main():
+    args = _parse_args()
+    _utf8_console()
+    print(BANNER)
+
+    if args.check_urls:
+        _handle_check_urls()
+        return
+
+    _print_startup(args)
+    _run_loop(args)
 
 
 if __name__ == "__main__":

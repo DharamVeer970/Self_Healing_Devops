@@ -188,7 +188,7 @@ def test_verify_restart_success(monkeypatch):
         remediate.urllib.request, "urlopen",
         _fake_urlopen([{"deploy": {"status": "build_in_progress"}},
                        {"deploy": {"status": "live"}}]))
-    _FakeMonitor.next = [(200, 50, b"")]
+    monkeypatch.setattr(_FakeMonitor, "next", [(200, 50, b"")])
     ok, msg = remediate.verify_restart("dep-1", _FakeMonitor)
     assert ok is True
     assert "healthy" in msg
@@ -217,7 +217,7 @@ def test_verify_restart_app_never_returns_200(monkeypatch):
     monkeypatch.setattr(
         remediate.urllib.request, "urlopen",
         _fake_urlopen([{"deploy": {"status": "live"}}]))
-    _FakeMonitor.next = [(503, 10, b"")]
+    monkeypatch.setattr(_FakeMonitor, "next", [(503, 10, b"")])
     ok, msg = remediate.verify_restart("dep-1", _FakeMonitor)
     assert ok is False
     assert "200" in msg

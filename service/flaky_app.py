@@ -55,15 +55,16 @@ def main():
         time.sleep(2)
 
         # ---- simulate disk filling up -------------------------------------
-        state["disk_used_pct"] = min(100.0, state["disk_used_pct"] + random.uniform(0.8, 2.5))
+        # random is safe here: deterministic simulation only, not cryptographic use (S2245)
+        state["disk_used_pct"] = min(100.0, state["disk_used_pct"] + random.uniform(0.8, 2.5))  # NOSONAR
 
         # ---- simulate a slow memory leak ----------------------------------
-        state["memory_mb"] += random.uniform(12, 30)
+        state["memory_mb"] += random.uniform(12, 30)  # NOSONAR -- simulation only, not security-sensitive
 
         # ---- decide what happens this tick --------------------------------
         if state["memory_mb"] >= MEM_LIMIT_MB:
             log(f"ERROR [pid {pid}] MemoryError: OutOfMemoryError - "
-                f"unable to allocate {random.randint(64,512)} MiB "
+                f"unable to allocate {random.randint(64,512)} MiB "  # NOSONAR -- simulation-only random
                 f"(rss={state['memory_mb']:.0f}MB, limit={MEM_LIMIT_MB}MB)")
             state["running"] = False          # the process dies!
             save_state(state)

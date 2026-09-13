@@ -90,6 +90,32 @@ def owner_id():
     return ""
 
 
+def _extract_service_url_id(item):
+    """Extract (url, service_id) from one service item; return (None,None) if missing."""
+    if not isinstance(item, dict):
+        return None, None
+    svc = item.get("service", {})
+    if not isinstance(svc, dict):
+        return None, None
+    url = ((svc.get("serviceDetails") or {}).get("url") or "").strip()
+    sid = (svc.get("id") or "").strip()
+    if url and sid:
+        return url.rstrip("/"), sid
+    return None, None
+
+
+def _fetch_service_items():
+    """Fetch and decode the services list; return list or [] on failure."""
+    code, body = _request(f"{API_BASE}/services?limit=100")
+    if code != 200 or not body:
+        return []
+    try:
+        items = json.loads(body.decode("utf-8"))
+        return items if isinstance(items, list) else []
+    except Exception:  # NOSONAR - degrade gracefully, never crash watchdog
+        return []
+
+
 def discover_services():
     """Auto-discover {url: service_id} for the whole workspace.
 
@@ -104,18 +130,10 @@ def discover_services():
     if _service_map_cache is not None:
         return _service_map_cache
     _service_map_cache = {}
-    code, body = _request(f"{API_BASE}/services?limit=100")
-    if code == 200 and body:
-        try:
-            items = json.loads(body.decode("utf-8"))
-            for item in items or []:
-                svc = item.get("service", {}) if isinstance(item, dict) else {}
-                url = ((svc.get("serviceDetails") or {}).get("url") or "").strip()
-                sid = (svc.get("id") or "").strip()
-                if url and sid:
-                    _service_map_cache[url.rstrip("/")] = sid
-        except Exception:                     # noqa: BLE001 - degrade
-            _service_map_cache = {}
+    for item in _fetch_service_items():
+        url, sid = _extract_service_url_id(item)
+        if url and sid:
+            _service_map_cache[url] = sid
     return _service_map_cache
 
 

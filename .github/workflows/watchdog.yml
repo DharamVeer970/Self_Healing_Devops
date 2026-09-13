@@ -1,6 +1,6 @@
 name: Portfolio Watchdog
 
-on:
+"on":
   schedule:
     - cron: "*/20 * * * *"     # every 20 minutes (GitHub cron can drift)
   workflow_dispatch: {}        # manual "Run workflow" button

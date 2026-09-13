@@ -8,7 +8,7 @@ name: Reusable Heal-Agent Runner
 # A workflow only *references* a secret by name with ${{ secrets.NAME }}.
 # Every job runs in its own clean container, so the job must be explicitly
 # granted the secrets it wants - and that single grant lives HERE, once.
-on:
+"on":
   workflow_call:
     inputs:
       run_command:

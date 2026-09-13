@@ -127,7 +127,9 @@ HEALTHY = {"running": True, "disk_used_pct": 32.0,
 def test_verify_healthy(sandbox):
     _seed(sandbox, HEALTHY)
     ok, problems, state = remediate.verify()
-    assert ok is True and problems == [] and state == HEALTHY
+    assert ok is True
+    assert problems == []
+    assert state == HEALTHY
 
 
 @pytest.mark.parametrize("mutate,expected", [

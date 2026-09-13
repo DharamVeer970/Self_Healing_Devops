@@ -40,7 +40,8 @@ def test_node_diagnose_no_errors_none():
 
 def test_node_safety_allows_known():
     out = g.node_safety({"diagnosis": {"action": "rotate_logs"}})
-    assert out["allowed"] is True and out["reason"]
+    assert out["allowed"] is True
+    assert out["reason"]
 
 
 def test_node_safety_blocks_dangerous():
@@ -68,7 +69,8 @@ def test_node_remediate_approval_yes_applies(monkeypatch):
     monkeypatch.setattr(g.remediate, "apply", lambda a: "ok")
     out = g.node_remediate({**DISK_DIAG, "allowed": True, "auto": False,
                             "attempt": 0})
-    assert out["action_taken"] is True and out["declined"] is False
+    assert out["action_taken"] is True
+    assert out["declined"] is False
 
 
 def test_node_remediate_approval_no_declines(monkeypatch):

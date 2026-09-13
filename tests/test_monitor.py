@@ -38,9 +38,9 @@ def test_read_offset_whitespace_only(sandbox):
 
 # ---- _write_offset ---------------------------------------------------------
 
-def test_write_offset_creates_dir_and_file(sandbox):
+def test_write_offset_creates_dir_and_file(sandbox, monkeypatch):
     target = sandbox["logs"] / "sub" / ".offset"
-    monitor.OFFSET_FILE = str(target)  # not in fixture dir, must be created
+    monkeypatch.setattr(monitor, "OFFSET_FILE", str(target))
     monitor._write_offset(7)
     assert read(target) == "7"
 

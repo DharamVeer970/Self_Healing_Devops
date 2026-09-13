@@ -79,9 +79,9 @@ The agent is a loop of small nodes. The LLM *suggests*; deterministic code
               +----------------+----------------+
               |                                 |
               v                                 v
-            +--------------+            (retry: go
-            |    REPORT    |             back to
-            | human summary|             DIAGNOSE)
+            +--------------+               (retry: go
+            |    REPORT    |                back to
+            | human summary|               DIAGNOSE)
             +--------------+
 ```
 

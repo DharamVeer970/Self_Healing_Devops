@@ -24,7 +24,8 @@ def _urlopen_ok(content="Root cause found."):
 
 def test_no_keys_offline():
     key, url, model = diagnose.llm_config()
-    assert key is None and url is None
+    assert key is None
+    assert url is None
     assert model == diagnose.DEFAULT_MODEL
 
 
@@ -64,7 +65,9 @@ def test_llm_model_override_via_env(monkeypatch):
 def test_model_used_even_without_key(monkeypatch):
     monkeypatch.setenv("LLM_MODEL", "foo/bar")
     key, url, model = diagnose.llm_config()
-    assert key is None and url is None and model == "foo/bar"
+    assert key is None
+    assert url is None
+    assert model == "foo/bar"
 
 
 # ---- llm_available ---------------------------------------------------------

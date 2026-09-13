@@ -7,9 +7,13 @@ agent/graph.py). Prints to the console and hands off to agent.notify.
 from agent import notify, safety
 
 
-def format_report(errors, diagnosis, outcome=None, verification=None,
+def format_report(_errors, diagnosis, outcome=None, verification=None,
                   llm_text=None):
-    """Return the multi-line incident summary (without notification footer)."""
+    """Return the multi-line incident summary (without notification footer).
+
+    _errors is kept for API compatibility (both engines pass it) but the
+    report is driven by diagnosis; the param is intentionally unused.
+    """
     sep = "=" * 70
     out = [
         "", sep,
@@ -25,8 +29,10 @@ def format_report(errors, diagnosis, outcome=None, verification=None,
         out.append(f" Action taken   : {outcome}")
     if verification:
         ok, problems, state = verification
-        status = "HEALTHY \u2714" if ok else \
-            f"BROKEN \u2718 ({', '.join(problems)})"
+        if ok:
+            status = "HEALTHY \u2714"
+        else:
+            status = f"BROKEN \u2718 ({', '.join(problems)})"
         out.append(f" Verification   : {status}")
         out.append(f" Machine state  : {state}")
     if llm_text:
@@ -43,15 +49,20 @@ def emit(errors, diagnosis, outcome=None, verification=None, llm_text=None):
     block = format_report(errors, diagnosis, outcome, verification, llm_text)
     print(block)
 
+    outcome_part = f"\noutcome  : {outcome}" if outcome else ""
+    if verification:
+        is_healthy = verification[0]
+        verified_value = "HEALTHY" if is_healthy else verification[1]
+        verified_part = f"\nverified : {verified_value}"
+    else:
+        verified_part = ""
     deliveries = notify.deliver(
         title=f"[Self-Healing Agent] {diagnosis['action']}",
         body=(f"time     : {datetime.now():%Y-%m-%d %H:%M:%S}\n"
               f"error    : {diagnosis['error_line'][:100]}\n"
               f"diagnosis: {diagnosis['diagnosis']}\n"
               f"fix      : {diagnosis['action']}"
-              + (f"\noutcome  : {outcome}" if outcome else "")
-              + (f"\nverified : {'HEALTHY' if verification[0] else verification[1]}"
-                 if verification else "")),
+              + outcome_part + verified_part),
     )
     if deliveries:
         status = ", ".join(f"{k}: {v}" for k, v in deliveries.items())

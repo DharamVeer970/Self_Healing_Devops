@@ -4,7 +4,7 @@ name: Self-Heal Agent
 # schedule. CI-safe: the agent NEVER edits tracked source files here - it
 # probes, diagnoses, and writes fix scripts to fixes/ for your review
 # (nothing is pushed back automatically).
-on:
+"on":
   schedule:
     - cron: "0 */6 * * *"        # every 6 hours (GitHub cron can drift)
   workflow_dispatch: {}           # manual "Run workflow" button

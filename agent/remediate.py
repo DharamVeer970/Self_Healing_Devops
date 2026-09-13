@@ -57,7 +57,12 @@ def restart_service():
     # start detached so it keeps running after this agent exits
     flags = 0
     if os.name == "nt":
-        flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+        try:
+            flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+        except AttributeError:
+            # Linux Python builds lack Windows constants; mocked Windows tests
+            # still need a non-zero flag. Use real Windows values as fallback.
+            flags = 0x00000200 | 0x00000008  # CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS
     subprocess.Popen(
         [sys.executable, FLAKY_APP],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,

@@ -35,10 +35,9 @@ def clean_env(monkeypatch):
     """Strip all credential/notification env vars before every test."""
     for key in ENV_KEYS:
         monkeypatch.delenv(key, raising=False)
-    yield
 
 
-@pytest.fixture()
+@pytest.fixture
 def sandbox(tmp_path, monkeypatch):
     """Redirect every runtime artifact to a temp dir and return paths.
 

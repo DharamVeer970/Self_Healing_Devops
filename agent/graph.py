@@ -36,9 +36,8 @@ def _import_langgraph():
         warnings, "_showwarnmsg_impl") else None
 
     def quiet(record):
-        if "allowed_objects" not in str(record.message):
-            if _real is not None:
-                _real(record)
+        if "allowed_objects" not in str(record.message) and _real is not None:
+            _real(record)
 
     if _real is not None:
         warnings._showwarnmsg_impl = quiet
@@ -199,7 +198,10 @@ def route_after_diagnose(state):
 
 def route_after_safety(state):
     blocked = not state.get("allowed")
-    unknown = state["diagnosis"].get("confidence") == 0.0
+    # Avoid direct float equality (S1244): confidence 0.0 means unknown/escalation;
+    # other values are >=0.6, so a threshold cleanly separates them.
+    confidence = state["diagnosis"].get("confidence")
+    unknown = confidence is not None and confidence < 0.01
     if blocked or unknown:
         return "report"                            # escalate to human
     return "remediate"

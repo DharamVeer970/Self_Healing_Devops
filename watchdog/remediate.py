@@ -72,7 +72,7 @@ def verify_restart(deploy_id, monitor, deadline=DEPLOY_TIMEOUT_SECS):
         waited += DEPLOY_POLL_SECS
         try:
             status = str(_deploy(deploy_id).get("status", ""))
-        except Exception as exc:            # noqa: BLE001 - report, don't raise
+        except Exception as exc:  # NOSONAR - broad catch intentional: must report honestly, never crash watchdog
             return False, f"deploy status check failed: {exc}"
         if status == "live":
             break
